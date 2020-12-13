@@ -6,7 +6,7 @@ module Parser (
 import Text.ParserCombinators.Parsec hiding (spaces)
 import System.Environment
 import Control.Monad
-import Numeric (readOct, readHex)
+import Numeric (readOct, readHex, readFloat)
 import Data.Char (digitToInt)
 
 
@@ -17,6 +17,7 @@ data LispVal = Atom String
              | Number Integer
              | String String
              | Bool Bool
+             | Float Float
              | Character Char
   deriving (Eq, Show)
 
@@ -94,6 +95,7 @@ parsePrefixedNumber = do
 parseNumber :: Parser LispVal
 parseNumber = parsePrefixedNumber <|> parseDecimal
 
+{-
 parseNumber' :: Parser LispVal
 parseNumber' = do
   digits <- many1 digit
@@ -101,11 +103,43 @@ parseNumber' = do
 
 parseNumber'' :: Parser LispVal
 parseNumber'' = many1 digit >>= (return . Number . read)
+-}
+
+{-Characters are objects that represent printed characters such as letters and digits. Characters are written using the notation #\<character> or #\<character name>. For example:
+
+#\a	; lower case letter
+#\A	; upper case letter
+#\(	; left parenthesis
+#\	; the space character
+#\space	; the preferred way to write a space
+#\newline	; the newline character
+Case is significant in #\<character>, but not in #\<character name>. If <character> in #\<character> is alphabetic, then the character following <character> must be a delimiter character such as a space or parenthesis. This rule resolves the ambiguous case where, for example, the sequence of characters ``#\space'' could be taken to be either a representation of the space character or a representation of the character ``#\s'' followed by a representation of the symbol ``pace.''
+
+Characters written in the #\ notation are self-evaluating. That is, they do not have to be quoted in programs. Some of the procedures that operate on characters ignore the difference between upper case and lower case. The procedures that ignore case have ``-ci'' (for ``case insensitive'') embedded in their names.
+-}
+parseChar :: Parser LispVal
+parseChar = do
+  char '#'
+  char '\\'
+  rest <- (string "space") <|> (string "newline") <|> (anyChar >>= (\x -> return  [x]))
+  return (Character $ case rest of
+    "space" -> ' '
+    "newline" -> '\n'
+    c -> c !! 0)
+
+parseFloat :: Parser LispVal
+parseFloat = do
+  whole_num <- many1 digit
+  char '.'
+  fractional_bit <- many1 digit
+  return . Float . fst $ (readFloat (whole_num ++ "." ++ fractional_bit) !! 0 )
 
 parseExpr :: Parser LispVal
-parseExpr = parseAtom
-         <|> parseString
-         <|> parseNumber
+parseExpr = try parseAtom
+  <|> try parseChar
+  <|> try parseString
+  <|> try parseFloat
+  <|> try parseNumber
 
 readExpr :: String -> String
 readExpr input = case parse parseExpr "lisp" input of
