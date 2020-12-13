@@ -16,3 +16,8 @@
 493929/4320200
 392929.222+329.1i
 392929+329i
+(a test)
+(a (nested) test)
+(a (dotted . list) test)
+(a '(quoted (dotted . list)) test)
+(a '(imbalanced parens)

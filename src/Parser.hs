@@ -94,42 +94,6 @@ parsePrefixedNumber = do
     'd' -> parseDecimal
     'x' -> parseHex
 
--- #b (binary), #o (octal), #d (decimal), and #x (hexadecimal)
-parseNumber :: Parser LispVal
-parseNumber = parsePrefixedNumber <|> parseDecimal
-
-{-
-parseNumber' :: Parser LispVal
-parseNumber' = do
-  digits <- many1 digit
-  return ((Number . read) digits)
-
-parseNumber'' :: Parser LispVal
-parseNumber'' = many1 digit >>= (return . Number . read)
--}
-
-{-Characters are objects that represent printed characters such as letters and digits. Characters are written using the notation #\<character> or #\<character name>. For example:
-
-#\a	; lower case letter
-#\A	; upper case letter
-#\(	; left parenthesis
-#\	; the space character
-#\space	; the preferred way to write a space
-#\newline	; the newline character
-Case is significant in #\<character>, but not in #\<character name>. If <character> in #\<character> is alphabetic, then the character following <character> must be a delimiter character such as a space or parenthesis. This rule resolves the ambiguous case where, for example, the sequence of characters ``#\space'' could be taken to be either a representation of the space character or a representation of the character ``#\s'' followed by a representation of the symbol ``pace.''
-
-Characters written in the #\ notation are self-evaluating. That is, they do not have to be quoted in programs. Some of the procedures that operate on characters ignore the difference between upper case and lower case. The procedures that ignore case have ``-ci'' (for ``case insensitive'') embedded in their names.
--}
-parseChar :: Parser LispVal
-parseChar = do
-  char '#'
-  char '\\'
-  rest <- (string "space") <|> (string "newline") <|> (anyChar >>= (\x -> return  [x]))
-  return (Character $ case rest of
-    "space" -> ' '
-    "newline" -> '\n'
-    c -> c !! 0)
-
 parseFloat :: Parser LispVal
 parseFloat = do
   whole_num <- many1 digit
@@ -156,14 +120,76 @@ parseComplex = do
   char 'i'
   (return . Complex) ((floatCast first_bit) :+ (floatCast second_bit))
 
-parseExpr :: Parser LispVal
-parseExpr = try parseAtom
-  <|> try parseChar
-  <|> try parseString
-  <|> try parseRational
+-- #b (binary), #o (octal), #d (decimal), and #x (hexadecimal)
+parseNumber :: Parser LispVal
+parseNumber =
+  try parseRational
   <|> try parseComplex
   <|> try parseFloat
-  <|> parseNumber
+  <|> try parsePrefixedNumber
+  <|> parseDecimal
+
+{-
+parseNumber' :: Parser LispVal
+parseNumber' = do
+  digits <- many1 digit
+  return ((Number . read) digits)
+
+parseNumber'' :: Parser LispVal
+parseNumber'' = many1 digit >>= (return . Number . read)
+-}
+
+{-Characters are objects that represent printed characters such as letters and digits. Characters are written using the notation #\<character> or #\<character name>. For example:
+
+#\a	; lower case letter
+#\A	; upper case letter
+#\(	; left parenthesis
+#\	; the space character
+#\space	; the preferred way to write a space
+#\newline	; the newline character
+Case is significant in #\<character>, but not in #\<character name>. If <character> in #\<character> is alphabetic, then the character following <character> must be a delimiter character such as a space or parenthesis. This rule resolves the ambiguous case where, for example, the sequence of characters ``#\space'' could be taken to be either a representation of the space character or a representation of the character ``#\s'' followed by a representation of the symbol ``pace.''
+
+Characters written in the #\ notation are self-evaluating. That is, they do not have to be quoted in programs. Some of the procedures that operate on characters ignore the difference between upper case and lower case. The procedures that ignore case have ``-ci'' (for ``case insensitive'') embedded in their names.
+-}
+parseChar :: Parser LispVal
+parseChar = do
+  char '#' >> char '\\'
+  rest <- (string "space") <|> (string "newline") <|> (anyChar >>= (\x -> return  [x]))
+  return (Character $ case rest of
+    "space" -> ' '
+    "newline" -> '\n'
+    c -> c !! 0)
+
+parseList :: Parser LispVal
+parseList = liftM List $ sepBy parseExpr spaces
+
+parseDottedList :: Parser LispVal
+parseDottedList = do
+    head <- endBy parseExpr spaces
+    tail <- char '.' >> spaces >> parseExpr
+    return $ DottedList head tail
+
+parseQuoted :: Parser LispVal
+parseQuoted = do
+    char '\''
+    x <- parseExpr
+    return $ List [Atom "quote", x]
+
+{-parseQuasiQuoted :: Parser LispVal
+parseQuasiQuoted = do
+    char '`'
+    x <- parseExpr
+    return $ List [Atom "quote", x]-}
+parseExpr :: Parser LispVal
+parseExpr = try parseAtom
+         <|> try parseChar
+         <|> try parseNumber
+         <|> try parseString
+         <|> try parseQuoted
+         <|> do char '('
+                x <- try parseList <|> parseDottedList
+                char ')'
+                return x
 
 readExpr :: String -> String
 readExpr input = case parse parseExpr "lisp" input of
