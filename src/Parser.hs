@@ -8,15 +8,18 @@ import System.Environment
 import Control.Monad
 import Numeric (readOct, readHex, readFloat)
 import Data.Char (digitToInt)
-
+import Data.Ratio ((%), Rational)
+import Data.Complex (Complex (..))
 
 
 data LispVal = Atom String
              | List [LispVal]
              | DottedList [LispVal] LispVal
-             | Number Integer
+             | Integer Integer
              | String String
              | Bool Bool
+             | Ratio Rational
+             | Complex (Complex Float)
              | Float Float
              | Character Char
   deriving (Eq, Show)
@@ -59,7 +62,7 @@ parseAtom = do
 
 
 parseDecimal :: Parser LispVal
-parseDecimal = liftM (Number . read) $ many1 digit
+parseDecimal = liftM (Integer . read) $ many1 digit
 
 readBinRec :: [Int] -> Integer
 readBinRec (lsb : rest) = (toInteger lsb) + 2 * readBinRec rest
@@ -69,17 +72,17 @@ readBinReal :: String -> Integer
 readBinReal = readBinRec . reverse . map digitToInt
 
 parseBinary :: Parser LispVal
-parseBinary = liftM (Number . readBinReal) $ many1 (oneOf "01")
+parseBinary = liftM (Integer. readBinReal) $ many1 (oneOf "01")
 
 readOctReal :: String -> Integer
 readOctReal s = fst ((readOct s) !! 0)
 parseOctal :: Parser LispVal
-parseOctal = liftM (Number . readOctReal) $ many1 (oneOf "01234567")
+parseOctal = liftM (Integer . readOctReal) $ many1 (oneOf "01234567")
 
 readHexReal :: String -> Integer
 readHexReal s = fst ((readHex s) !! 0)
 parseHex :: Parser LispVal
-parseHex = liftM (Number . readHexReal) $ many1 (oneOf "0123456789ABCDEFabcdef")
+parseHex = liftM (Integer . readHexReal) $ many1 (oneOf "0123456789ABCDEFabcdef")
 
 parsePrefixedNumber :: Parser LispVal
 parsePrefixedNumber = do
@@ -134,12 +137,33 @@ parseFloat = do
   fractional_bit <- many1 digit
   return . Float . fst $ (readFloat (whole_num ++ "." ++ fractional_bit) !! 0 )
 
+parseRational :: Parser LispVal
+parseRational = do
+  top <- many1 digit
+  char '/'
+  bottom <- many1 digit
+  return $ Ratio (read top % read bottom)
+
+floatCast :: LispVal -> Float
+floatCast (Float f) = f
+floatCast (Integer i) = fromIntegral i
+
+parseComplex :: Parser LispVal
+parseComplex = do
+  first_bit <- try parseFloat <|> parseDecimal
+  char '+'
+  second_bit <- try parseFloat <|> parseDecimal
+  char 'i'
+  (return . Complex) ((floatCast first_bit) :+ (floatCast second_bit))
+
 parseExpr :: Parser LispVal
 parseExpr = try parseAtom
   <|> try parseChar
   <|> try parseString
+  <|> try parseRational
+  <|> try parseComplex
   <|> try parseFloat
-  <|> try parseNumber
+  <|> parseNumber
 
 readExpr :: String -> String
 readExpr input = case parse parseExpr "lisp" input of
