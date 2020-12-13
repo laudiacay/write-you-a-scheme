@@ -1,6 +1,10 @@
 module Lib
-    ( someFunc
+    ( realMain 
     ) where
 
-someFunc :: IO ()
-someFunc = putStrLn "someFunc"
+import System.Environment
+
+realMain :: IO ()
+realMain = do
+    args <- getArgs
+    putStrLn ("Hello, " ++ args !! 0)
